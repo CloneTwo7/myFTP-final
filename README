@@ -1,1 +1,33 @@
-This is a readme
+### Systems Programming CS 360 Final ###
+### Travis M. Peterson | Dec 9 2022  ###
+
+The final consists of two executables. A server and a client.
+By running the server in one directory, you can run the client in another.
+You can have multiple clients connected to the same sever.
+
+------------------------------------------
+The user can interface with the server through the client with the following commands:
+
+'cd <pathname>'  --- changes the local directory on the client
+
+'rcd <pathname>' --- changes the remote directory on the server
+
+'ls' 		 --- lists the contents of the local directory in accordance with 'ls -l -a' 20 lines at a time
+
+'rls'		 --- lists the contents of the remote directory in accordance with 'ls -l -a' 20 lines at a time
+
+'get <pathname>' --- transfers the contents of the regular file at <pathname> to the local repo for the client
+
+'show <pathname>'--- displays the contents of the regular file at <pathname> to the client 20 lines at a time
+
+'put <pathname>' --- transfers the contents of the local regular file at <pathname> to the server's current repo
+
+-----------------------------------------
+
+This assignemnt utilizes many system calls such as read, write, fork, exec, and stat. It even demonstrates an
+understanding of how to manage a datastream between two remote connections.
+-----------------------------------------
+
+The assignment comes complete with a makefile complete with these following commands:
+
+- make - builds both executables

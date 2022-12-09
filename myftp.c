@@ -17,9 +17,15 @@ int isDirectory(char *path);
 char *buildRequest(char req, char *param);
 void printErr(char *err);
 
+/*The main function establishes a main connection with the
+ * server and then loops through the cycle of reading the users'
+ * input and sending it to the handleInput function*/
 int main(int argc, char **argv) {
 	int sock = client_init(argv[1]);
 	while(1) {
+		if(write(1, "MFTP> ", strlen("MFTP> ")) <0) {
+			perror("Writing prompt");
+		}
 		int numread = 0;
 		char input[512];
 		char ch;
@@ -39,6 +45,8 @@ int main(int argc, char **argv) {
 	}
 }
 
+/*The following command sends a request to the server and builds
+ * a string for the acknowledgement or the error received*/
 char *sendPortRequest(int sock, char *cmd) {
 	if(write(sock, cmd, strlen(cmd)) < 0) {
 		perror("Error sending request");
@@ -61,6 +69,7 @@ char *sendPortRequest(int sock, char *cmd) {
 	return resp;
 }
 
+/*The following parses and handles all possible input by the user*/
 void handleInput(char *input, int sock, char *clientArg) {
 	char *cmd = strtok(input, " ");
 	char *param;
@@ -94,15 +103,28 @@ void handleInput(char *input, int sock, char *clientArg) {
 	}
 	else if(strcmp(cmd, "put") == 0) {
 		remotePut(sock, param, clientArg);
+	} else {
+		if(write(1, "Command Not Recognized\n", strlen("Command Not Recognized\n")) < 0) {
+			perror("Writing command error");
+		}
 	}
 
 }
 
+/*remotePut() will establish a data connection with the server
+ * and then read the contents of a file and send the
+ * data to the server.*/
 void remotePut(int sock, char *file, char *clientArg) {
 	int fd = open(file, O_RDONLY);
-	if(fd == -1) {
+	if(fd == -1) { //Verify the file exists locally
 		perror("");
 		return;
+	}
+	if(!isReadableFile(file)) {
+		if (write(1, "Not Readable File\n", strlen("Not Readable File\n")) <0) {
+			perror("writing error");
+			return;
+		}
 	}
 	char *resp = sendPortRequest(sock, "D\n");
 	if(resp[0] == 'A') {
@@ -131,6 +153,11 @@ void remotePut(int sock, char *file, char *clientArg) {
 	close(fd);
 }
 
+/*the buildRequest function takes in a character (representing the command
+ * sent to the server) and the parameter of the command. This will then
+ * build an adequate string that can be written to the server and understood.
+ * the resulting string must be freed using free() whenever it is done being
+ * used*/
 char *buildRequest(char req, char *param) {
 	char * request = calloc(1, strlen(param) +3);
 	request[0] = req;
@@ -141,6 +168,10 @@ char *buildRequest(char req, char *param) {
 }
 
 
+/*the remoteShow function will be passed the server's socket, file targeted, and
+ * the client's argument. This will then create a datasocket with the server
+ * and the following information will be piped to the client being displayed 20
+ * lines at a time*/
 void remoteShow(int sock, char *file, char* clientArg) {
         char *resp = sendPortRequest(sock, "D\n");
         if(resp[0] == 'A') {
@@ -170,13 +201,16 @@ void remoteShow(int sock, char *file, char* clientArg) {
 	free(resp);
 }
 
+/*Simple write to standard out function used to streamline writing errors*/
 void printErr(char *err) {
 	if(write(1, err, strlen(err)+1) < 0) {
 		perror("Error Writing Error");
 	}
 }
 
-
+/*the remoteGet function will establish a dataconnection with
+ * the server and write the contents sent by the server into a new
+ * file created based on the file argument sent by the function call*/
 void remoteGet(int sock, char *file, char *clientArg) {
 	char *param = calloc(1, strlen(file)+1);
 	strcpy(param, file);
@@ -208,8 +242,6 @@ void remoteGet(int sock, char *file, char *clientArg) {
 		printErr(ack+1);
 		return;
 	}
-	printf("PRCS %d: Received ack '%s'\n", getpid(), ack);
-
 	int fd = open(fileName, O_WRONLY | O_CREAT, 0744);
 	if(fd == -1) {
 		perror("");
@@ -227,6 +259,9 @@ void remoteGet(int sock, char *file, char *clientArg) {
 	free(param);
 }
 
+/*this function call will cause the server to change to whatever
+ * path was sent to it. It simply requests the 'C' command from
+ * the server given the path variable sent to it*/
 void remoteChangeDir(int sock, char *path) {
 	char *request = buildRequest('C', path);
 	char *ak = sendPortRequest(sock, request);
@@ -238,6 +273,9 @@ void remoteChangeDir(int sock, char *path) {
 	free(request);
 }
 
+/*This requests the 'L' command from the server. The function
+ * then takes the information sent by the server and displays it
+ * 20 lines at a time*/
 void remoteList(int sock, char *clientArg) {
 	char *resp = sendPortRequest(sock, "D\n");
 	if(resp[0] == 'A') {
@@ -269,6 +307,7 @@ void remoteList(int sock, char *clientArg) {
 	free(resp);
 }
 
+/*simple function used to tell if a given path leads to a readable directory*/
 int isDirectory(char *path) {
 	struct stat sstat, *pstat = &sstat;
 	if(!strcmp(path, ".") || !strcmp(path, "..")) return (0);
@@ -278,6 +317,7 @@ int isDirectory(char *path) {
 	return(0);
 }
 
+/*simple function used to tell if a given path leads to a readable file*/
 int isReadableFile(char *path) {
 	struct stat sstat, *pstat = &sstat;
 	if(lstat(path, pstat) == 0 && (S_ISREG(pstat->st_mode)) && !(isDirectory(path))) {
@@ -286,6 +326,7 @@ int isReadableFile(char *path) {
 	return (0);
 }
 
+/*simple function used to call chdir on the client to the given path*/
 void localChangeDir(char *path) {
         if(chdir(path)) {
 		if(write(1, strerror(errno), strlen(strerror(errno)))<0) {
@@ -297,6 +338,9 @@ void localChangeDir(char *path) {
         }
 }
 
+/*localList() displays the contents following the "ls -l" style
+ * the contents are then piped into "more -20" to display 20
+ * lines at a time*/
 void localList() {
         int fd[2];
         int rdr, wrt;
@@ -318,17 +362,23 @@ void localList() {
         else {
                 close(rdr);
                 close(1); dup(wrt); close(wrt);
-                if(execlp("ls", "ls", "-l", NULL) == -1) {
+                if(execlp("ls", "ls", "-l","-a", NULL) == -1) {
                         perror("exec(ls) failed");
                 }
                 exit(1);
         }
 }
 
+/*This sends the 'Q' command to the server. After receiving an acknloweldegment
+ * the client will exit*/
 void remoteExit(int sock) {
-	if(write(sock, "Q\n", strlen("Q\n")) < 0) {
-		perror("Error sending Q");
+	char *ack = sendPortRequest(sock, "Q\n");
+	if(ack[0] != 'A') {
+		if(write(1, ack+1, strlen(ack+1)) < 0) {
+			perror("Error writing error");
+		}
 	}
+	free(ack);
 	close(sock);
 	exit(0);
 }

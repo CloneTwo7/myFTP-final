@@ -37,8 +37,9 @@ int main(int argc, char **argv) {
 	}
 }
 
+/*The following function is used to write an acknowledgement
+ * to the clinet.*/
 void sendAcknowledgement(int sock, char *ack) {
-	printf("PRCS %d: Sending ack %s\n", getpid(), ack);
 	if( write(sock, ack, strlen(ack)) < 0) {
 		perror("Error sending acknowledgement\n");
 	}
@@ -46,13 +47,14 @@ void sendAcknowledgement(int sock, char *ack) {
 }
 
 
+/*The following function handles all the packets sent to the server.
+ * it comes equipped with D, L, Q, C, G, and P commands. Any other command
+ * will send an acknolwedgement to the client stating that the packet
+ * was not understood*/
 void handleCommand(int sock, char *cmd) {
 	int datasock;
-	printf("PRCS %d: Handling command %s\n", getpid(), cmd);
 	if(cmd[0] == 'D') {
-		printf("PRCS %d: Handling command %s\n", getpid(), cmd);
 		datasock = establishDataSocket(sock);
-		printf("PRCS %d: datasock %d\n",getpid(), datasock);
 	} 
 	else if(cmd[0] == 'L') {
 		remoteList(sock, datasock);
@@ -70,10 +72,12 @@ void handleCommand(int sock, char *cmd) {
 		remotePut(sock, datasock, &cmd[1]);
 	}
 	else {
-		exit(1);
+		sendAcknowledgement(sock, "EUnknown Packet Symbol Sent");
 	}
 }
 
+/*remotePut() reads from a datasocket and creates a file in the remote directory
+ * with fileName. It then stores the data piped through the datasock into the file */
 void remotePut(int sock, int datasock, char *file) {
         char *param = calloc(1, strlen(file)+1);
         strcpy(param, file);
@@ -86,13 +90,13 @@ void remotePut(int sock, int datasock, char *file) {
         }
 	fileName[strlen(fileName)-1] = '\0';
 	printf("PRCS %d: Checking if file '%s' exists\n", getpid(), fileName);
-        if(isReadableFile(fileName)) {
+        if(isReadableFile(fileName)) { //If the file already exists in the remote repo, send err
 		sendAcknowledgement(sock, "EFile Exists\n");
                 return;
         }
 
 	int fd = open(fileName, O_WRONLY | O_CREAT, 0744);
-	if(fd == -1) {
+	if(fd == -1) { //If an error occurs creating a file, send error
 		sendAcknowledgement(sock, "E");
 		sendAcknowledgement(sock, strerror(errno));
 		sendAcknowledgement(sock, "\n");
@@ -125,20 +129,30 @@ void remotePut(int sock, int datasock, char *file) {
 
 }
 
+/*remoteGet() verifies that the file sent exists in the remote repo
+ * and then uses the datasock to pipe the contents over to the client*/
 void remoteGet(int sock, int datasock, char *param) {
 	char file[strlen(param)];
 	strcpy(file, param);
 	file[strlen(param)-1] = '\0';
 	int fd = open(file, O_RDONLY);
-	printf("PRCS %d: Open returned %d for file '%s'\n", getpid(), fd, file);
-	if(fd == -1) {
+	if(fd == -1) { //Error if the file cannot be opened
 		sendAcknowledgement(sock, "E");
 		sendAcknowledgement(sock, strerror(errno));
 		sendAcknowledgement(sock,"\n");
+		close(datasock);
 		return;
-	} else {
-		sendAcknowledgement(sock, "A\n");
 	}
+	int isreg = isReadableFile(file);
+	printf("isdir: %d\n", isreg);
+	if(!isreg) {
+		sendAcknowledgement(sock, "E");
+                sendAcknowledgement(sock, "File is Not Readable or Regular");
+                sendAcknowledgement(sock,"\n");
+		close(datasock);
+                return;
+	}
+	sendAcknowledgement(sock, "A\n");
 	char buff;
 	int numread = read(fd, &buff, 1);
 	while(numread > 0) {
@@ -146,26 +160,27 @@ void remoteGet(int sock, int datasock, char *param) {
 		numread = read(fd, &buff, 1);
 	}
 	close(datasock);
-	printf("PRCS %d: Finished reading from file '%s'\n", getpid(), file);
 	close(fd);
 }
 
+/*remoteChangeDir() takes in a path and utilizes chdir() to change
+ * the current positioning of the remote repos' spot in the file system*/
 void remoteChangeDir(int sock, char *param) {
-	printf("String length param:  %ld \n", strlen(param));
 	char path[strlen(param)];
 	strcpy(path, param);
 	path[strlen(param)-1] = '\0';
-	printf("PRCS %d: Changing to directory \'%s\'\n", getpid(),path);
-	if(chdir(path) == 0) {
+	if(chdir(path) == 0) { //Change Dir completed successfully
 		sendAcknowledgement(sock, "A\n");
-	} else {
-		sendAcknowledgement(sock, "E");
-		sendAcknowledgement(sock, strerror(errno));
-		sendAcknowledgement(sock, "\n");
+		return;
 	}
-	
+	sendAcknowledgement(sock, "E");
+	sendAcknowledgement(sock, strerror(errno));
+	sendAcknowledgement(sock, "\n");
 }
 
+/*After receiving the 'Q' command, the server will
+ * send an acknowledgement to the client that it should exit
+ * afterwards, it will close the open socket and exit with 0*/
 void remoteExit(int sock) {
 	if(write(1, "Received Command to Exit\n", strlen("Received Command to Exit\n")) < 0) {
 		perror("Error on Exit");
@@ -175,20 +190,19 @@ void remoteExit(int sock) {
 	exit(0);
 }
 
+/*remoteList() will fork and exec "ls -l" and pipe the contents 
+ * over the datasocket*/
 void remoteList(int sock, int datasock) {
 	if(fork()) {
-		printf("PRCS %d: Waiting for child\n", getpid());
 		sendAcknowledgement(sock, "A\n");
 		wait(NULL);
-		printf("PRCS %d: closing data sock\n", getpid());
 		close(datasock);
 	} 
 	else{
-		printf("PRCS %d: Executing ls command\n", getpid());
         	close(1);
         	dup(datasock);
         	close(datasock);
-        	if(execlp("ls", "ls", "-l", NULL) == -1) {
+        	if(execlp("ls", "ls", "-l","-a",NULL) == -1) {
 			sendAcknowledgement(datasock, "E");
 			sendAcknowledgement(datasock, strerror(errno));
 			sendAcknowledgement(datasock, "\n");
@@ -197,15 +211,17 @@ void remoteList(int sock, int datasock) {
 	}
 }
 
+/*simple function to test whether path is a readable directory*/
 int isDirectory(char *path) {
-        struct stat sstat, *pstat = &sstat;
-        if(!strcmp(path, ".") || !strcmp(path, "..")) return (0);
-        if(lstat(path, pstat) == 0) {
-                return ((S_ISDIR(pstat->st_mode)) ? 1 : 0 );
-        }
-        return(0);
+	printf("checking directory '%s'\n", path);
+        struct stat area, *s = &area;
+	if(S_ISDIR(s -> st_mode)) {
+		return (1);
+	}
+	return (0);
 }
 
+/*simple function to thest whether path is a readable file*/
 int isReadableFile(char *path) {
         struct stat sstat, *pstat = &sstat;
         if(lstat(path, pstat) == 0 && (S_ISREG(pstat->st_mode)) && !(isDirectory(path))) {
@@ -214,6 +230,8 @@ int isReadableFile(char *path) {
         return (0);
 }
 
+/*servInit() initializes a server on DEF_SERV_PORT. Then it will return the socket associated with
+ * the connection*/
 int servInit() {
         struct sockaddr_in servAddr;
         /*make the socket*/
@@ -256,12 +274,10 @@ int servInit() {
                         break;
                 }
         }
-        printf("Connection Received\n");
         return cfd;
 }
-
+/*Establishes a datasocket used to pipe data to and from the server*/
 int establishDataSocket(int sock) {
-	printf("PRCS %d: Creating Data Socket\n", getpid());
 	struct sockaddr_in servAddr;
 	/*make socket*/
 	int datasock = socket(AF_INET, SOCK_STREAM, 0);
@@ -306,6 +322,5 @@ int establishDataSocket(int sock) {
 		sendAcknowledgement(sock, strerror(errno));
 		sendAcknowledgement(sock, "\n");
         }
-	printf("PRCS %d: Data Connection Established at FD %d \n", getpid(), datacfd);
         return datacfd;
 }
