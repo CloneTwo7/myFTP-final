@@ -32,7 +32,6 @@ int main(int argc, char **argv) {
 		}
 		cmd[tot] = '\n';
 		cmd[tot+1] = '\0';
-		printf("PRCS %d: Received Command %s\n",getpid(), cmd);
 		handleCommand(sock, cmd);
 	}
 }
@@ -95,7 +94,6 @@ void remotePut(int sock, int datasock, char *file) {
                 buffName = strtok(NULL, "/");
         }
 	fileName[strlen(fileName)-1] = '\0';
-	printf("PRCS %d: Checking if file '%s' exists\n", getpid(), fileName);
         if(isReadableFile(fileName)) { //If the file already exists in the remote repo, send err
 		sendAcknowledgement(sock, "EFile Exists\n");
                 return;
@@ -149,9 +147,7 @@ void remoteGet(int sock, int datasock, char *param) {
 		close(datasock);
 		return;
 	}
-	int isreg = isReadableFile(file);
-	printf("isdir: %d\n", isreg);
-	if(!isreg) {
+	if(!isReadableFile(file)) {
 		sendAcknowledgement(sock, "E");
                 sendAcknowledgement(sock, "File is Not Readable or Regular");
                 sendAcknowledgement(sock,"\n");
@@ -219,7 +215,6 @@ void remoteList(int sock, int datasock) {
 
 /*simple function to test whether path is a readable directory*/
 int isDirectory(char *path) {
-	printf("checking directory '%s'\n", path);
         struct stat area, *s = &area;
 	if(S_ISDIR(s -> st_mode)) {
 		return (1);

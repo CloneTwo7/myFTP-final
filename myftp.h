@@ -15,5 +15,5 @@
 #include <linux/limits.h>
 #include <errno.h>
 
-#define DEF_PORT "1237"
-#define DEF_SERV_PORT 1237
+#define DEF_PORT "49999"
+#define DEF_SERV_PORT 49999
