@@ -54,21 +54,27 @@ void sendAcknowledgement(int sock, char *ack) {
 void handleCommand(int sock, char *cmd) {
 	int datasock;
 	if(cmd[0] == 'D') {
+		sendAcknowledgement(1,"Establishing Data Connection\n");
 		datasock = establishDataSocket(sock);
 	} 
 	else if(cmd[0] == 'L') {
+		sendAcknowledgement(1,"Performing Remote List\n");
 		remoteList(sock, datasock);
 	}
 	else if(cmd[0] == 'Q') {
+		sendAcknowledgement(1,"Received Exit Command\n");
 		remoteExit(sock);
 	}
 	else if(cmd[0] == 'C') {
+		sendAcknowledgement(1,"Received Change Dir Command\n");
 		remoteChangeDir(sock, &cmd[1]);
 	}
 	else if(cmd[0] == 'G') {
+		sendAcknowledgement(1,"Received Get Command\n");
 		remoteGet(sock, datasock, &cmd[1]);
 	}
 	else if(cmd[0] == 'P') {
+		sendAcknowledgement(1,"Received Put Command\n");
 		remotePut(sock, datasock, &cmd[1]);
 	}
 	else {
